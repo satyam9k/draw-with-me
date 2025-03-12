@@ -78,6 +78,7 @@
           margin-right: 10px;
         }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.js"></script>
 </head>
 <body>
     <div id="toolbar">
@@ -123,8 +124,8 @@
         const sizeInput = document.getElementById('size');
         const clearCanvasButton = document.getElementById('clear-canvas');
         const saveImageButton = document.getElementById('save-image');
-        const usernameInput = document.getElementById("username")
-        const userList = document.getElementById("user-list")
+        const usernameInput = document.getElementById("username");
+        const userList = document.getElementById("user-list");
 
         let isDrawing = false;
         let lastX = 0;
@@ -136,86 +137,101 @@
         let currentColor = '#000000';
         let currentSize = 5;
         let points = []; // for line tool
-        let users = {} //store users
-        let userId = Math.random().toString(36).substring(2, 10) //generate an id for the user
+        let users = {}; //store users
+        let userId = Math.random().toString(36).substring(2, 10); //generate an id for the user
 
+        const socket = io("https://cooked-north-fernleaf.glitch.me"); // Replace with your server address
 
-        function draw(x, y, type = "mousemove") {
-          if (type == "mousedown"){
-            rectStartX = x
-            rectStartY = y
-          }
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            socket.emit('newUser', {userId: userId, name: usernameInput.value, tool: currentTool, color: currentColor, size: currentSize});
+        });
 
-          if (currentTool == "rectangle" || currentTool == "circle"){
-            if (type == "mouseup" || type == "mouseleave"){
-              if(currentTool == "rectangle"){
-                ctx.strokeStyle = currentColor;
-                ctx.lineWidth = currentSize;
-                ctx.beginPath();
-                ctx.rect(rectStartX, rectStartY, x - rectStartX, y - rectStartY);
-                ctx.stroke();
-              }else{
-                const radius = Math.sqrt((rectStartX - x) ** 2 + (rectStartY - y) ** 2)
-                ctx.strokeStyle = currentColor;
-                ctx.lineWidth = currentSize;
-                ctx.beginPath();
-                ctx.ellipse(rectStartX, rectStartY, radius, radius, 0, 0, 2 * Math.PI);
-                ctx.stroke();
-              }
+        socket.on("updateUsers", (user_data) => {
+          updateUsers(user_data)
+        });
+
+        socket.on('draw', (data) => {
+            draw(data.x, data.y, data.type, data.tool, data.drawingMode, data.color, data.size, data.userId);
+        });
+
+        function draw(x, y, type = "mousemove", tool = currentTool, drawingMode = currentDrawingMode, color = currentColor, size = currentSize, id = userId) {
+            if (type == "mousedown") {
+                rectStartX = x;
+                rectStartY = y;
             }
-          }
-          else if (currentTool === 'eraser') {
-              ctx.fillStyle = 'white';
-              ctx.beginPath();
-              ctx.arc(x, y, currentSize, 0, 2 * Math.PI);
-              ctx.fill();
-          } else if (currentTool === 'spray') {
-              for (let i = 0; i < currentSize * 2; i++) {
-                  const offset_x = Math.floor(Math.random() * (currentSize * 2 + 1)) - currentSize;
-                  const offset_y = Math.floor(Math.random() * (currentSize * 2 + 1)) - currentSize;
-                  if (offset_x ** 2 + offset_y ** 2 <= currentSize ** 2 && x + offset_x >= 0 && x + offset_x < canvas.width && y + offset_y >= 0 && y + offset_y < canvas.height){
-                    ctx.fillStyle = currentColor;
-                    ctx.beginPath();
-                    ctx.arc(x + offset_x, y + offset_y, 1, 0, 2 * Math.PI);
-                    ctx.fill();
-                  }
-              }
-          }
-          else if (currentDrawingMode === "freehand" && isDrawing && type == "mousemove") {
-              ctx.strokeStyle = currentColor;
-              ctx.lineWidth = currentSize;
-              ctx.lineCap = 'round';
-              ctx.beginPath();
-              ctx.moveTo(lastX, lastY);
-              ctx.lineTo(x, y);
-              ctx.stroke();
-          } else if (currentDrawingMode === "point" && type == "click") {
-              ctx.fillStyle = currentColor;
-              ctx.beginPath();
-              ctx.arc(x, y, currentSize / 2, 0, 2 * Math.PI);
-              ctx.fill();
-          } else if (currentDrawingMode == "line" && type == "click") {
-              points.push({x: x, y: y});
-              if (points.length >= 2) {
-                  ctx.strokeStyle = currentColor;
-                  ctx.lineWidth = currentSize;
-                  ctx.beginPath();
-                  ctx.moveTo(points[0].x, points[0].y);
-                  ctx.lineTo(points[1].x, points[1].y);
-                  ctx.stroke();
-                  points = [];
-              }
-          }
 
-          if (currentDrawingMode == "freehand" && type == "mousemove"){
-            lastX = x;
-            lastY = y;
-          }
+            if (tool == "rectangle" || tool == "circle") {
+                if (type == "mouseup" || type == "mouseleave") {
+                    if (tool == "rectangle") {
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = size;
+                        ctx.beginPath();
+                        ctx.rect(rectStartX, rectStartY, x - rectStartX, y - rectStartY);
+                        ctx.stroke();
+                    } else {
+                        const radius = Math.sqrt((rectStartX - x) ** 2 + (rectStartY - y) ** 2);
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = size;
+                        ctx.beginPath();
+                        ctx.ellipse(rectStartX, rectStartY, radius, radius, 0, 0, 2 * Math.PI);
+                        ctx.stroke();
+                    }
+                }
+            }
+            else if (tool === 'eraser') {
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, 2 * Math.PI);
+                ctx.fill();
+            } else if (tool === 'spray') {
+                for (let i = 0; i < size * 2; i++) {
+                    const offset_x = Math.floor(Math.random() * (size * 2 + 1)) - size;
+                    const offset_y = Math.floor(Math.random() * (size * 2 + 1)) - size;
+                    if (offset_x ** 2 + offset_y ** 2 <= size ** 2 && x + offset_x >= 0 && x + offset_x < canvas.width && y + offset_y >= 0 && y + offset_y < canvas.height) {
+                        ctx.fillStyle = color;
+                        ctx.beginPath();
+                        ctx.arc(x + offset_x, y + offset_y, 1, 0, 2 * Math.PI);
+                        ctx.fill();
+                    }
+                }
+            }
+            else if (drawingMode === "freehand" && isDrawing && type == "mousemove") {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = size;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            } else if (drawingMode === "point" && type == "click") {
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(x, y, size / 2, 0, 2 * Math.PI);
+                ctx.fill();
+            } else if (drawingMode == "line" && type == "click") {
+                points.push({ x: x, y: y });
+                if (points.length >= 2) {
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = size;
+                    ctx.beginPath();
+                    ctx.moveTo(points[0].x, points[0].y);
+                    ctx.lineTo(points[1].x, points[1].y);
+                    ctx.stroke();
+                    points = [];
+                }
+            }
+
+            if (drawingMode == "freehand" && type == "mousemove") {
+                lastX = x;
+                lastY = y;
+            }
         }
 
         function clearCanvas() {
             ctx.fillStyle = "white";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
+            socket.emit('clear');
         }
 
         function saveImage() {
@@ -225,82 +241,94 @@
             link.download = 'collaborative_drawing.png';
             link.click();
         }
-        
-        function updateUsers(user_data){
-          users = user_data
-          userList.innerHTML = ""
-          for (const userId in users){
-            const user = users[userId]
-            const userDiv = document.createElement("div")
-            userDiv.classList.add("user-container")
-            const colorIndicator = document.createElement("div")
-            colorIndicator.classList.add("color-indicator")
-            colorIndicator.style.backgroundColor = user.color
-            userDiv.appendChild(colorIndicator)
-            userDiv.innerHTML += user.name
-            userList.appendChild(userDiv)
-          }
+
+        function updateUsers(user_data) {
+            users = user_data;
+            userList.innerHTML = "";
+            for (const userId in users) {
+                const user = users[userId];
+                const userDiv = document.createElement("div");
+                userDiv.classList.add("user-container");
+                const colorIndicator = document.createElement("div");
+                colorIndicator.classList.add("color-indicator");
+                colorIndicator.style.backgroundColor = user.color;
+                userDiv.appendChild(colorIndicator);
+                userDiv.innerHTML += user.name;
+                userList.appendChild(userDiv);
+            }
         }
+
         // --- Event Listeners ---
         toolSelect.addEventListener('change', (e) => {
             currentTool = e.target.value;
+            socket.emit("changeSettings", {tool: currentTool, userId: userId})
         });
 
         drawingModeSelect.addEventListener('change', (e) => {
             currentDrawingMode = e.target.value;
-            points = []
+            points = [];
+            socket.emit("changeSettings", {drawingMode: currentDrawingMode, userId: userId})
         });
 
         colorInput.addEventListener('input', (e) => {
             currentColor = e.target.value;
+            socket.emit("changeSettings", {color: currentColor, userId: userId})
         });
 
         sizeInput.addEventListener('input', (e) => {
             currentSize = parseInt(e.target.value);
+            socket.emit("changeSettings", {size: currentSize, userId: userId})
         });
 
         canvas.addEventListener('mousedown', (e) => {
             isDrawing = true;
             lastX = e.offsetX;
             lastY = e.offsetY;
-            draw(e.offsetX, e.offsetY, "mousedown");
+            socket.emit('draw', { x: e.offsetX, y: e.offsetY, type: "mousedown", userId: userId });
         });
 
         canvas.addEventListener('mousemove', (e) => {
             if (isDrawing || currentTool == "spray") {
-              draw(e.offsetX, e.offsetY);
+                socket.emit('draw', { x: e.offsetX, y: e.offsetY, type: "mousemove", userId: userId });
             }
         });
 
         canvas.addEventListener('mouseup', (e) => {
             isDrawing = false;
-            draw(e.offsetX, e.offsetY, "mouseup")
+            socket.emit('draw', { x: e.offsetX, y: e.offsetY, type: "mouseup", userId: userId });
         });
 
         canvas.addEventListener('mouseleave', (e) => {
             isDrawing = false;
-            draw(e.offsetX, e.offsetY, "mouseleave")
+            socket.emit('draw', { x: e.offsetX, y: e.offsetY, type: "mouseleave", userId: userId });
         });
 
-        canvas.addEventListener("click", (e)=>{
-          draw(e.offsetX, e.offsetY, "click");
-        })
+        canvas.addEventListener("click", (e) => {
+            socket.emit('draw', { x: e.offsetX, y: e.offsetY, type: "click", userId: userId });
+        });
 
         clearCanvasButton.addEventListener('click', clearCanvas);
         saveImageButton.addEventListener('click', saveImage);
 
-        usernameInput.addEventListener("input", ()=>{
-          users[userId]["name"] = usernameInput.value
-          updateUsers(users)
-        })
+        usernameInput.addEventListener("input", () => {
+            users[userId]["name"] = usernameInput.value;
+            socket.emit("changeSettings", {name: usernameInput.value, userId: userId})
+            updateUsers(users);
+        });
         //initialize users
         users[userId] = {
-          "name": usernameInput.value,
-          "tool": currentTool,
-          "color": currentColor,
-          "size": currentSize
-        }
-        updateUsers(users)
+            "name": usernameInput.value,
+            "tool": currentTool,
+            "color": currentColor,
+            "size": currentSize,
+            "drawingMode": currentDrawingMode
+        };
+        updateUsers(users);
+
+        socket.on("clearCanvas", () => {
+          ctx.fillStyle = "white";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        })
     </script>
 </body>
 </html>
