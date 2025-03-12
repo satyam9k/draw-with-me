@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaborative Drawing Board</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        #canvas-container {
+            background-color: white;
+            border: 2px solid black;
+            cursor: crosshair;
+        }
+        #toolbar {
+            display: flex;
+            flex-direction: column;
+            margin-right: 20px;
+            gap: 10px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background-color: #eee;
+        }
+        .tool-button {
+            padding: 8px;
+            border: none;
+            background-color: #ddd;
+            cursor: pointer;
+        }
+        .tool-button.active {
+            background-color: #bbb;
+        }
+        input[type="color"]{
+            width: 100%;
+            height: 30px;
+            border: none;
+            cursor: pointer;
+            -webkit-appearance: none;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper{
+            padding: 0;
+        }
+        input[type="color"]::-webkit-color-swatch{
+            border: none;
+        }
+        .canvas-option{
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .canvas-option button{
+          padding: 8px;
+          border: none;
+          background-color: #ddd;
+          cursor: pointer;
+        }
+        input[type="range"]{
+          width: 100%;
+        }
+        .label{
+          margin-top: 10px;
+        }
+        .user-container{
+          display: flex;
+          align-items: center;
+        }
+        .color-indicator{
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <input type="text" id="username" value="User">
+        <label for="tool">Select Tool:</label>
+        <select id="tool">
+            <option value="brush">Brush</option>
+            <option value="pen">Pen</option>
+            <option value="eraser">Eraser</option>
+            <option value="spray">Spray</option>
+            <option value="line">Line</option>
+            <option value="point">Point</option>
+            <option value="rectangle">Rectangle</option>
+            <option value="circle">Circle</option>
+        </select>
+        <label for="drawing-mode">Drawing Mode:</label>
+        <select id="drawing-mode">
+            <option value="freehand">Freehand</option>
+            <option value="point">Point</option>
+            <option value="line">Line</option>
+        </select>
+        <label for="color">Color:</label>
+        <input type="color" id="color" value="#000000">
+        <label for="size">Size:</label>
+        <input type="range" id="size" min="1" max="50" value="5">
+        <div class="canvas-option">
+          <button id="clear-canvas">Clear Canvas</button>
+          <button id="save-image">Save Image</button>
+        </div>
+        <div id="user-list"></div>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="drawing-canvas" width="800" height="600"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('drawing-canvas');
+        const ctx = canvas.getContext('2d');
+        const toolSelect = document.getElementById('tool');
+        const drawingModeSelect = document.getElementById('drawing-mode');
+        const colorInput = document.getElementById('color');
+        const sizeInput = document.getElementById('size');
+        const clearCanvasButton = document.getElementById('clear-canvas');
+        const saveImageButton = document.getElementById('save-image');
+        const usernameInput = document.getElementById("username")
+        const userList = document.getElementById("user-list")
+
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+        let rectStartX = 0;
+        let rectStartY = 0;
+        let currentTool = 'brush';
+        let currentDrawingMode = 'freehand';
+        let currentColor = '#000000';
+        let currentSize = 5;
+        let points = []; // for line tool
+        let users = {} //store users
+        let userId = Math.random().toString(36).substring(2, 10) //generate an id for the user
+
+
+        function draw(x, y, type = "mousemove") {
+          if (type == "mousedown"){
+            rectStartX = x
+            rectStartY = y
+          }
+
+          if (currentTool == "rectangle" || currentTool == "circle"){
+            if (type == "mouseup" || type == "mouseleave"){
+              if(currentTool == "rectangle"){
+                ctx.strokeStyle = currentColor;
+                ctx.lineWidth = currentSize;
+                ctx.beginPath();
+                ctx.rect(rectStartX, rectStartY, x - rectStartX, y - rectStartY);
+                ctx.stroke();
+              }else{
+                const radius = Math.sqrt((rectStartX - x) ** 2 + (rectStartY - y) ** 2)
+                ctx.strokeStyle = currentColor;
+                ctx.lineWidth = currentSize;
+                ctx.beginPath();
+                ctx.ellipse(rectStartX, rectStartY, radius, radius, 0, 0, 2 * Math.PI);
+                ctx.stroke();
+              }
+            }
+          }
+          else if (currentTool === 'eraser') {
+              ctx.fillStyle = 'white';
+              ctx.beginPath();
+              ctx.arc(x, y, currentSize, 0, 2 * Math.PI);
+              ctx.fill();
+          } else if (currentTool === 'spray') {
+              for (let i = 0; i < currentSize * 2; i++) {
+                  const offset_x = Math.floor(Math.random() * (currentSize * 2 + 1)) - currentSize;
+                  const offset_y = Math.floor(Math.random() * (currentSize * 2 + 1)) - currentSize;
+                  if (offset_x ** 2 + offset_y ** 2 <= currentSize ** 2 && x + offset_x >= 0 && x + offset_x < canvas.width && y + offset_y >= 0 && y + offset_y < canvas.height){
+                    ctx.fillStyle = currentColor;
+                    ctx.beginPath();
+                    ctx.arc(x + offset_x, y + offset_y, 1, 0, 2 * Math.PI);
+                    ctx.fill();
+                  }
+              }
+          }
+          else if (currentDrawingMode === "freehand" && isDrawing && type == "mousemove") {
+              ctx.strokeStyle = currentColor;
+              ctx.lineWidth = currentSize;
+              ctx.lineCap = 'round';
+              ctx.beginPath();
+              ctx.moveTo(lastX, lastY);
+              ctx.lineTo(x, y);
+              ctx.stroke();
+          } else if (currentDrawingMode === "point" && type == "click") {
+              ctx.fillStyle = currentColor;
+              ctx.beginPath();
+              ctx.arc(x, y, currentSize / 2, 0, 2 * Math.PI);
+              ctx.fill();
+          } else if (currentDrawingMode == "line" && type == "click") {
+              points.push({x: x, y: y});
+              if (points.length >= 2) {
+                  ctx.strokeStyle = currentColor;
+                  ctx.lineWidth = currentSize;
+                  ctx.beginPath();
+                  ctx.moveTo(points[0].x, points[0].y);
+                  ctx.lineTo(points[1].x, points[1].y);
+                  ctx.stroke();
+                  points = [];
+              }
+          }
+
+          if (currentDrawingMode == "freehand" && type == "mousemove"){
+            lastX = x;
+            lastY = y;
+          }
+        }
+
+        function clearCanvas() {
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function saveImage() {
+            const dataURL = canvas.toDataURL("image/png");
+            const link = document.createElement('a');
+            link.href = dataURL;
+            link.download = 'collaborative_drawing.png';
+            link.click();
+        }
+        
+        function updateUsers(user_data){
+          users = user_data
+          userList.innerHTML = ""
+          for (const userId in users){
+            const user = users[userId]
+            const userDiv = document.createElement("div")
+            userDiv.classList.add("user-container")
+            const colorIndicator = document.createElement("div")
+            colorIndicator.classList.add("color-indicator")
+            colorIndicator.style.backgroundColor = user.color
+            userDiv.appendChild(colorIndicator)
+            userDiv.innerHTML += user.name
+            userList.appendChild(userDiv)
+          }
+        }
+        // --- Event Listeners ---
+        toolSelect.addEventListener('change', (e) => {
+            currentTool = e.target.value;
+        });
+
+        drawingModeSelect.addEventListener('change', (e) => {
+            currentDrawingMode = e.target.value;
+            points = []
+        });
+
+        colorInput.addEventListener('input', (e) => {
+            currentColor = e.target.value;
+        });
+
+        sizeInput.addEventListener('input', (e) => {
+            currentSize = parseInt(e.target.value);
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            lastX = e.offsetX;
+            lastY = e.offsetY;
+            draw(e.offsetX, e.offsetY, "mousedown");
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDrawing || currentTool == "spray") {
+              draw(e.offsetX, e.offsetY);
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            isDrawing = false;
+            draw(e.offsetX, e.offsetY, "mouseup")
+        });
+
+        canvas.addEventListener('mouseleave', (e) => {
+            isDrawing = false;
+            draw(e.offsetX, e.offsetY, "mouseleave")
+        });
+
+        canvas.addEventListener("click", (e)=>{
+          draw(e.offsetX, e.offsetY, "click");
+        })
+
+        clearCanvasButton.addEventListener('click', clearCanvas);
+        saveImageButton.addEventListener('click', saveImage);
+
+        usernameInput.addEventListener("input", ()=>{
+          users[userId]["name"] = usernameInput.value
+          updateUsers(users)
+        })
+        //initialize users
+        users[userId] = {
+          "name": usernameInput.value,
+          "tool": currentTool,
+          "color": currentColor,
+          "size": currentSize
+        }
+        updateUsers(users)
+    </script>
+</body>
+</html>
